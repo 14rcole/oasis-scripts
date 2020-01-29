@@ -30,8 +30,8 @@ find -name "*.yml" | xargs sh replace.sh
 rm -rf ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}
 cp -R ${ROLE_PATH} ${LP_PATH}/linchpin/provision/roles/
 
-# delete the openstack provider
-rm -rf ${ROLE_PATH}/molecule/openstack
+# remove the openstack provider
+sh remove-openstack.sh
 
 # cd to new role directory
 pushd ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}
@@ -48,3 +48,8 @@ sh ${SCRIPTS_DIR}/filter.sh  $(pwd) ../../filter_plugins
 rm library
 mkdir library
 sh ${SCRIPTS_DIR}/library.sh ${ROLE_PATH} ../../library
+
+popd
+
+# clean up
+rm -rf ${ROLE_NAME}

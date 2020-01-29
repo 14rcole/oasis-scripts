@@ -4,7 +4,7 @@ for f in $(find ${LIBRARY_PATH} -maxdepth 1 -type f); do
     module=$(awk '/module:/{ print $2 }' $f)
     if grep -rn "$module" ${ROLE_PATH}/tasks/ &> /dev/null; then
         pushd library
-	ln -s ../${LIBRARY_PATH}/$f .
+	ln -s ../$f .
 	popd
         echo $f
     fi
