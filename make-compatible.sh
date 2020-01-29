@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/bash -xe
 
 # declare variable
 LP_PATH=$1
@@ -6,32 +6,118 @@ ROLE_NAME=$2
 ROLE_PATH=$(pwd)/${ROLE_NAME}
 SCRIPTS_DIR=$(pwd)
 
+update_metadata() {
+    echo "galaxy_info:
+  author: Samvaran Rallabandi
+  description: ${ROLE_NAME} provisioning for LinchPin
+  company: Red Hat, Inc.
+  license: GPLv3
+  min_ansible_version: 2.8
+  platforms:
+    - name: EL
+      versions:
+        - 7
+        - 8
+    - name: Fedora
+      versions:
+        - 30
+        - 31
+  
+  galaxy_tags:
+    - oasis
+    - linchpin
+    - ${ROLE_NAME}
+" > ${ROLE_NAME}/meta/main.yml
+}
+
+replace_includes() {
+    gawk -vFPAT='([^ }{]+)|(\"[^\"]+\")' '{INDENT="  "} /^  include:/{m=$0} !m{ print } m{ printf "%s%s %s\n%svars:\n",INDENT,"include_tasks:",$2,INDENT; for(i=3; i <= NF; i+=2) { gsub("=", ": ", $i); printf "%s%s%s\"{{ %s }}\"\n",INDENT,INDENT,$i,$(i+2) }; m=NULL }' $1
+}
+
+replace_links() {
+    SRC_PATH=$1
+    DEST_PATH=$2
+    rm ${DEST_PATH} # remove link so that it can be replaced with a directory
+    mkdir ${DEST_PATH}
+    for f in $(find ${SRC_PATH}/ -maxdepth 1 -name "*.py" -type f); do
+	if [[ "$DEST_PATH" == "library" ]]; then
+            item=$(awk '/module:/{ print $2 }' $f)
+	else # in this case, DEST_PATH is filter_plugins
+            item=$(awk -v FPAT="([^ :']+)" '/filter_utils./{ print $1 }' $f)
+	fi
+        if grep -rn "$item" ${ROLE_PATH}/tasks/ &> /dev/null; then
+            pushd ${DEST_PATH}
+    	    ln -s ../$f .
+    	    popd
+        fi
+    done
+}
+
+library() {
+    LIBRARY_PATH=$1
+    rm library
+    mkdir library
+    for f in $(find ${LIBRARY_PATH} -maxdepth 1 -name "*.py" -type f); do
+        module=$(awk '/module:/{ print $2 }' $f)
+        if grep -rn "$module" ${ROLE_PATH}/tasks/ &> /dev/null; then
+            pushd library
+    	ln -s ../$f .
+    	popd
+        fi
+    done
+}
+
+remove_openstack() {
+    pushd ${ROLE_NAME}/molecule
+    # remove the docker scenario files
+    rm -rf openstack
+    # remove dependency on oasis_roles.molecule_docker_ci
+    sed -i '2d' shared/requirements.yml
+    # change any usages of docker to docker
+    ls ./docker/molecule.yml
+    grep -lRZ 'openstack' . | xargs -0 -l sed -i -e 's/openstack/docker/g'
+    popd
+}
+
 if [ ! -d "meta_skeleton" ] ; then
     git clone https://github.com/oasis-roles/meta_skeleton
 else
     pushd meta_skeleton
-    git pull https://github.com/oasis-roles/meta_skeleton
+    git pull origin master
     popd
 fi
 
-# initalize OASIS role skeleton
+echo "> initializing new role with meta_skeleton..."
 ansible-galaxy init --role-skeleton=meta_skeleton ${ROLE_NAME}
 
-# copy role to skeleton directory
-cp -R ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME} ${ROLE_PATH}
+echo "> copying existing role..."
+cp -R ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}/* ${ROLE_PATH}
 
 # update all references to "include:" to "include_tasks:"
 # NOTE: include_tasks is static, import_tasks is dynamic
 # If a reference to "include:" included "static: yes" then it should have beome
 # "import_tasks" and this will need to be done by hand
+echo "> replacing deprecated 'include' task..."
 find -name "*.yml" | xargs sh replace.sh
 
-# copy the "new" role back to linchpin
-rm -rf ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}
-cp -R ${ROLE_PATH} ${LP_PATH}/linchpin/provision/roles/
+echo "> removing unecessary files..."
+rm ${ROLE_NAME}/LICENSE
+rm ${ROLE_NAME}/Jenkinsfile
+rm ${ROLE_NAME}/README.md
 
-# remove the openstack provider
-sh remove-openstack.sh
+# CHANGME to your own name and email address
+echo "Ryan Cole <rycole@redhat.com>" > ${ROLE_NAME}/AUTHORS
+
+echo "> updating metadata file..."
+update_metadata
+
+echo "> removing the openstack provider in molecule..."
+remove_openstack
+
+echo "> copying the new role back to linchpin"
+rm -rf ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}
+ls ${LP_PATH}/linchpin/provision/roles
+cp -R ${ROLE_PATH} ${LP_PATH}/linchpin/provision/roles/
 
 # cd to new role directory
 pushd ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}
@@ -40,16 +126,15 @@ pushd ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}
 # we can just continue linking the whole directory, but it makes it easier to
 # separate these into roles if we know exactly which filters are used for each
 # provider
-rm filter_plugins # remove the link
-mkdir filter_plugins
-sh ${SCRIPTS_DIR}/filter.sh  $(pwd) ../../filter_plugins
+echo "> updating filter plugins..."
+replace_links ../../filter_plugins filter_plugins
 
 # Same as above, but with libraries instead of filter plugins
-rm library
-mkdir library
-sh ${SCRIPTS_DIR}/library.sh ${ROLE_PATH} ../../library
+echo "> updating libraries..."
+replace_links ../../library library
 
 popd
 
-# clean up
+echo "> cleaning up..."
 rm -rf ${ROLE_NAME}
+echo "> finished"
