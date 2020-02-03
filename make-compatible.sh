@@ -30,10 +30,6 @@ update_metadata() {
 " > ${ROLE_NAME}/meta/main.yml
 }
 
-replace_includes() {
-    gawk -vFPAT='([^ }{]+)|(\"[^\"]+\")' '{INDENT="  "} /^  include:/{m=$0} !m{ print } m{ printf "%s%s %s\n%svars:\n",INDENT,"include_tasks:",$2,INDENT; for(i=3; i <= NF; i+=2) { gsub("=", ": ", $i); printf "%s%s%s\"{{ %s }}\"\n",INDENT,INDENT,$i,$(i+2) }; m=NULL }' $1
-}
-
 replace_links() {
     SRC_PATH=$1
     DEST_PATH=$2
@@ -45,7 +41,7 @@ replace_links() {
 	else # in this case, DEST_PATH is filter_plugins
             item=$(awk -v FPAT="([^ :']+)" '/filter_utils./{ print $1 }' $f)
 	fi
-        if grep -rn "$item" ${ROLE_PATH}/tasks/ &> /dev/null; then
+        if [ -n "$item" ] && grep -rn "$item" ${ROLE_PATH}/tasks/ &> /dev/null; then
             pushd ${DEST_PATH}
     	    ln -s ../$f .
     	    popd
@@ -98,12 +94,16 @@ cp -R ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}/* ${ROLE_PATH}
 # If a reference to "include:" included "static: yes" then it should have beome
 # "import_tasks" and this will need to be done by hand
 echo "> replacing deprecated 'include' task..."
-find -name "*.yml" | xargs sh replace.sh
+find openstack -name "*.yml" -exec sh replace_includes.sh {} \;
 
 echo "> removing unecessary files..."
 rm ${ROLE_NAME}/LICENSE
 rm ${ROLE_NAME}/Jenkinsfile
 rm ${ROLE_NAME}/README.md
+rm ${ROLE_NAME}/.travis.yml # we do all of this testing already, just differently
+
+echo "> Fix ansible linting..."
+echo "  - \"503\"  # disable \"Tasks run when changed should be handlers\"" >> ${ROLE_NAME}/.ansible-lint
 
 # CHANGME to your own name and email address
 echo "Ryan Cole <rycole@redhat.com>" > ${ROLE_NAME}/AUTHORS
