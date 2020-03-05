@@ -71,7 +71,7 @@ remove_openstack() {
     sed -i '2d' shared/requirements.yml
     # change any usages of docker to docker
     ls ./docker/molecule.yml
-    grep -lRZ 'openstack' . | xargs -0 -l sed -i -e 's/openstack/docker/g'
+    grep -lRZ 'openstack' . | xargs -0 -l -r sed -i -e 's/openstack/docker/g'
     popd
 }
 
@@ -94,7 +94,7 @@ cp -R ${LP_PATH}/linchpin/provision/roles/${ROLE_NAME}/* ${ROLE_PATH}
 # If a reference to "include:" included "static: yes" then it should have beome
 # "import_tasks" and this will need to be done by hand
 echo "> replacing deprecated 'include' task..."
-find openstack -name "*.yml" -exec sh replace_includes.sh {} \;
+find $ROLE_NAME -name "*.yml" -exec sh replace_includes.sh {} \;
 
 echo "> removing unecessary files..."
 rm ${ROLE_NAME}/LICENSE
