@@ -1,5 +1,19 @@
 # OASIS Scripts
 
+### Prequisites
+
+Install molecule
+
+```
+pip install requirements.txt
+```
+or 
+```
+pip install molecule==2.22
+```
+
+### Running scripts
+
 To run the scripts, simply run `sh make-compatible.sh` /path/to/linchpin/ $ROLE_NAME
 
 `make-compatible.sh` will then take the following steps:
